@@ -1,34 +1,56 @@
-from rest_framework.test import APITestCase
+import pytest
+from unittest.mock import patch
+from rest_framework.test import APIClient
 from rest_framework import status
-from .models import FAQ, ChatbotSession, UserFeedback
+from django.conf import settings
+from chatbot.models import ChatbotSession, ChatMessage
 
-class FAQTests(APITestCase):
-    def test_create_faq(self):
-        data = {'question': 'What is Django?', 'answer': 'Django is a web framework.'}
-        response = self.client.post('/faqs/', data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['question'], 'What is Django?')
+@pytest.fixture
+def api_client():
+    return APIClient()
 
-class ChatbotSessionTests(APITestCase):
-    def test_start_session(self):
-        data = {'user_id': 1, 'session_id': 'abcd1234'}
-        response = self.client.post('/start-session/', data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn('session_id', response.data)
+@pytest.fixture
+def mock_authenticate():
+    with patch('chatbot.views.authenticate') as mock:
+        mock.return_value = {'id': 'test_user_id'}
+        yield mock
 
-    def test_send_message(self):
-        session_data = {'user_id': 1, 'session_id': 'abcd1234'}
-        self.client.post('/start-session/', session_data, format='json')
-        message_data = {'session_id': 'abcd1234', 'sender': 'user', 'message': 'Hello, bot!'}
-        response = self.client.post('/send-message/', message_data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['sender'], 'user')
+@pytest.mark.django_db
+def test_start_chatbot_session_success(api_client, mock_authenticate):
+    response = api_client.post('/api/start_chatbot_session/')
+    assert response.status_code == status.HTTP_201_CREATED
+    assert 'session_id' in response.data
 
-class UserFeedbackTests(APITestCase):
-    def test_submit_feedback(self):
-        session_data = {'user_id': 1, 'session_id': 'abcd1234'}
-        self.client.post('/start-session/', session_data, format='json')
-        feedback_data = {'session_id': 'abcd1234', 'rating': 5, 'comment': 'Great chatbot!'}
-        response = self.client.post('/submit-feedback/', feedback_data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(response.data['rating'], 5)
+@pytest.mark.django_db
+def test_start_chatbot_session_auth_failed(api_client):
+    response = api_client.post('/api/start_chatbot_session/')
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data["error"] == "Echec d'authentification de l'utilisateur"
+
+@pytest.mark.django_db
+def test_send_message_success(api_client, mock_authenticate):
+    session = ChatbotSession.objects.create(user_id='test_user_id')
+    with patch('chatbot.views.handle_message', return_value='Réponse du bot'):
+        response = api_client.post('/api/send_message/', {
+            'session_id': session.id,
+            'message': 'Bonjour'
+        })
+        
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['message'] == 'Réponse du bot'
+        assert ChatMessage.objects.filter(session=session).count() == 2
+
+@pytest.mark.django_db
+def test_send_message_auth_failed(api_client):
+    response = api_client.post('/api/send_message/', {
+        'session_id': 1,
+        'message': 'Bonjour'
+    })
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data['error'] == "Utilisateur non reconnu par le système"
+
+@pytest.mark.django_db
+def test_send_message_missing_params(api_client, mock_authenticate):
+    response = api_client.post('/api/send_message/', {'session_id': 1})
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data['error'] == "session_id, and message are required"

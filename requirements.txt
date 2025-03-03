@@ -43,6 +43,7 @@ numpy
 geopy
 openpyxl
 scikit-learn
+pytest
 
 django-db-logger
 elasticsearch-dsl 

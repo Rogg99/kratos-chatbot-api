@@ -62,3 +62,6 @@ Ce projet decline le backend du chatbot de test de l'entreprise KRATOS Inc.
         "message": "Bonjour ! Je suis Coco, comment puis-je vous aider aujourd'hui ?",
         "session": "ba653ca2-7e24-40b5-939f-fd62e28838bc"
     }
+
+### Notes
+- Apres le premier lancement du container, veuillez patienter le demarrage de elasticsearch, cela peut prendre quelques minutes en fonction des capacités de votre machine.
