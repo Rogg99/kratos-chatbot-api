@@ -34,6 +34,7 @@ def train():
     clf = MultinomialNB()
     clf.fit(X, labels)
 
+    # Sauvegarde du Classifieur Multinomial Naive Bayes dans les fichiers
     f = open('models/coco_classifier.pickle', 'wb')
     pickle.dump(clf, f)
     f.close()

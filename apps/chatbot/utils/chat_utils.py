@@ -17,8 +17,16 @@ PAYMENT_STOP_PATH = "/payments/stop/"
 PAYMENT_SET_AMOUNT_PATH = "/payment/set-amount/"
 
 
-# Fonction pour détecter l'intention
 def detect_intent(message):
+    """
+    Détecte l'intention de l'utilisateur en analysant les mots-clés du message.
+    
+    Args:
+        message (str): Message de l'utilisateur.
+    
+    Returns:
+        str: L'intention détectée parmi ('verifier_paiement', 'initier_paiement', 'annuler_paiement', 'modifier_montant_transaction').
+    """
     intents = {
         "verifier_paiement": ["vérifier", "état", "paiement", "transaction", "statut"],
         "initier_paiement": ["initier", "payer", "effectuer", "paiement", "transaction"],
@@ -34,65 +42,84 @@ def detect_intent(message):
     
     return "autre"
 
-# Fonction pour extraire le numéro de transaction
+
 def extract_transaction_id(message):
+    """
+    Extrait un identifiant de transaction depuis un message.
+    
+    Args:
+        message (str): Message contenant potentiellement un numéro de transaction.
+    
+    Returns:
+        str: Identifiant de transaction s'il est trouvé, sinon None.
+    """
     match = re.search(r'(\d{5,})', message)
-    if match:
-        return match.group(1)
-    return None
+    return match.group(1) if match else None
 
 
-def request_payment_api(endpoint,authorization,body = {},method='get'):
-    response = requests.Response(400)
+def request_payment_api(endpoint, authorization, body={}, method='get'):
+    """
+    Envoie une requête à l'API de paiement.
+    
+    Args:
+        endpoint (str): Chemin de l'API de paiement.
+        authorization (str): Jeton d'authentification.
+        body (dict): Corps de la requête (utilisé pour les requêtes POST/PATCH).
+        method (str): Méthode HTTP ('get' ou 'post').
+    
+    Returns:
+        requests.Response: Réponse de l'API.
+    """
+    response = requests.Response()
     try:
         headers = {
             "Authorization": authorization,
             "X-Kratos-Key": "2025@@@sign-kr@t0$"
         }
         if method == "get":
-            params = "?"
-            for key in body.keys():
-                if len(params.split('='))>0:
-                    params += "&"
-                params += key+"="+body[key]
-            response = requests.get(PAYMENT_API+endpoint+params, verify=settings.CRT_PATH,headers=headers)
+            params = "?" + "&".join([f"{key}={value}" for key, value in body.items()])
+            response = requests.get(PAYMENT_API + endpoint + params, verify=settings.CRT_PATH, headers=headers)
         else:
-            response = requests.post(PAYMENT_API+endpoint, verify=settings.CRT_PATH,json=body,headers=headers)
+            response = requests.post(PAYMENT_API + endpoint, json=body, verify=settings.CRT_PATH, headers=headers)
     except Exception as e:
         logger.error(str(e))
     return response
 
 
-# Fonction pour vérifier l'état du paiement via une requête API
-def verifier_etat_paiement(transaction_id,authorization):
-    url = PAYMENT_STATUS_PATH + f"/{transaction_id}"
-    try:
-        response = request_payment_api(url,authorization)
-        if response.status_code == 200:
-            data = response.json()
-            return f"Le statut de votre paiement est : {data['status']}"
-        else:
-            return "Désolé, je n'ai pas pu vérifier l'état de votre paiement."
-    except requests.exceptions.RequestException as e:
-        return f"Erreur lors de la connexion au serveur : {e}"
+def verifier_etat_paiement(transaction_id, authorization):
+    """
+    Vérifie l'état d'un paiement via l'API de paiement.
+    
+    Args:
+        transaction_id (str): Identifiant de la transaction.
+        authorization (str): Jeton d'authentification.
+    
+    Returns:
+        str: Statut du paiement ou message d'erreur.
+    """
+    response = request_payment_api(PAYMENT_STATUS_PATH + f"/{transaction_id}", authorization)
+    if response.status_code == 200:
+        return f"Le statut de votre paiement est : {response.json()['status']}"
+    return "Désolé, je n'ai pas pu vérifier l'état de votre paiement."
 
-# Fonction pour initier un paiement via une requête API
-def initier_paiement(egopass_name,mode_paiment,telephone=''):
-    url = PAYMENT_START_PATH
-    body = {
-        "egopass":egopass_name,
-        "mode_paiment":mode_paiment,
-        "telephone":telephone,
-    } 
-    try:
-        response = request_payment_api(url,body=body,method='post')
-        if response.status_code == 200:
-            data = response.json()
-            return f"Le paiement {data['id']} a été initié avec succès, veuiller confirmer la transaction sur votre terminal bancaire ou mobile {telephone}"
-        else:
-            return "Désolé, je n'ai pas pu initié votre paiement. Veuiller reessayer à nouveau."
-    except requests.exceptions.RequestException as e:
-        return f"Erreur lors de la connexion au serveur : {e}"
+
+def initier_paiement(egopass_name, mode_paiement, telephone=''):
+    """
+    Initialise un paiement via l'API de paiement.
+    
+    Args:
+        egopass_name (str): Identifiant du compte de paiement.
+        mode_paiement (str): Mode de paiement (carte, mobile, etc.).
+        telephone (str, optional): Numéro de téléphone pour confirmation. Default: ''.
+    
+    Returns:
+        str: Confirmation ou message d'erreur.
+    """
+    body = {"egopass": egopass_name, "mode_paiment": mode_paiement, "telephone": telephone}
+    response = request_payment_api(PAYMENT_START_PATH, body=body, method='post')
+    if response.status_code == 200:
+        return f"Paiement initié avec succès. Veuillez confirmer la transaction sur {telephone}"
+    return "Désolé, échec de l'initialisation du paiement."
 
 
 # Fonction pour annuler un paiement via une requête API
@@ -155,6 +182,17 @@ def get_previous_intent(session:int):
 
 # Fonction principale pour gérer le message utilisateur
 def handle_message(message:str,session:ChatbotSession,authorization=None):
+    """
+    Gère le message de l'utilisateur et détermine la réponse du chatbot.
+    
+    Args:
+        message (str): Message envoyé par l'utilisateur.
+        session (ChatbotSession): Session de chatbot active.
+        authorization (str, optional): Jeton d'authentification de l'utilisateur. Default: None.
+    
+    Returns:
+        str: Réponse du chatbot.
+    """
     TROUBLE_ANSWER = "Je ne suis pas sûr de comprendre. Pouvez-vous reformuler ?"
         
     if(message.isnumeric()):
