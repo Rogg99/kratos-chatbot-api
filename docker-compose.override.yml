@@ -1,0 +1,87 @@
+services:
+  server:
+    build: .
+    ports:
+      - "7898:7898"
+    volumes:
+      - .:/app
+      - static_volume:/app/static
+      - media_volume:/app/media
+    container_name: app_kratos_chatbot
+    depends_on:
+      - db
+    networks:
+      - elk
+
+  db:
+    image: postgres:15
+    env_file: .env
+    ports:
+      - "5413:5432"
+    container_name: kratos_chatbot_postgre
+    networks:
+      - elk
+
+  django:
+    build: .
+    volumes:
+      - .:/app
+    entrypoint: [ "python3", "manage.py" ]
+
+  pip:
+    build: .
+    volumes:
+      - .:/app
+    entrypoint: [ "pip" ]
+
+  # Elasticsearch Service
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - elk
+
+  # # Logstash Service
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.17.0
+    container_name: logstash
+    ports:
+      - "5046:5044"
+      - "5002:5000/tcp"
+      - "5002:5000/udp"
+    environment:
+      - LS_JAVA_OPTS=-Xms512m -Xmx1024m
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+    networks:
+      - elk
+
+  # Kibana Service
+  kibana_chatbot:
+    image: docker.elastic.co/kibana/kibana:7.17.0
+    container_name: kibana_chatbot
+    ports:
+      - "5603:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - elk
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
+  es_data: # Persistent Elasticsearch data
+  logstash_data: # For Logstash (if needed)
+
+
+networks:
+  elk:
+    driver: bridge

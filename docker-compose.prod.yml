@@ -1,0 +1,20 @@
+version: "3"
+services:
+  app:
+    build: .
+    ports:
+      - "7898:7898"
+    restart: always
+    volumes:
+      - .:/app
+    container_name: kratos_chatbot_api
+    entrypoint: ["gunicorn", "--bind", "0.0.0.0:7898", "src.wsgi"]
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15
+    env_file: .env
+    ports:
+      - "5413"
+    container_name: kratos_chatbot_postgres
