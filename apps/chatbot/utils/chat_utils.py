@@ -76,6 +76,7 @@ def request_payment_api(endpoint, authorization, body={}, method='get'):
             "Authorization": authorization,
             "X-Kratos-Key": "2025@@@sign-kr@t0$"
         }
+        
         if method == "get":
             params = "?" + "&".join([f"{key}={value}" for key, value in body.items()])
             response = requests.get(PAYMENT_API + endpoint + params, verify=settings.CRT_PATH, headers=headers)
